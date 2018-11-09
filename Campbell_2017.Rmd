@@ -1,0 +1,58 @@
+---
+title: "Campbell_2017"
+author: "Matthew Banton"
+date: "09/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Re-analysis of mouse hypothalamic scRNAseq data from Campbell et. al., 2017
+
+Source of data: Campbell, J.N., Macosko, E.Z., Fenselau, H., Pers, T.H., Lyubetskaya, A., Tenen, D., Goldman, M., Verstegen, A.M., Resch, J.M., McCarroll, S.A. and Rosen, E.D., 2017. A molecular census of arcuate hypothalamus and median eminence cell types. Nature neuroscience, 20(3), p.484.
+
+* <https://www.ncbi.nlm.nih.gov/pubmed/28166221>
+
+* <https://www.nature.com/articles/nn.4495>
+
+
+
+```{r}
+
+```
+
+## Title
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+
+```{r}
+
+```
+
+
+
+
+```{r}
+
+```
+
+
+
+
+```{r}
+
+```
