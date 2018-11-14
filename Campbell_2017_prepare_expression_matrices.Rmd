@@ -1,0 +1,319 @@
+---
+title: "Campbell_2017_prepare_expression_matrices"
+author: "Matthew Banton"
+date: "14/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load packages and set working directory
+
+```{r}
+
+library(tidyverse)
+library(scater)
+library(dplyr)
+library(limma)
+library(SingleCellExperiment)
+library(Seurat)
+library(mclust)
+library(Matrix)
+library(tibble)
+
+setwd("/media/data/mattb/projects/Brian_scRNAseq_website/R_projects/mouse_hypothalamus_scRNAseq")
+
+```
+
+
+
+## Create function to import and join campbell expression matrices created by zUMIs
+
+From the cambell paper the data for the following mouse replicates were produced:
+
+* CHOW fed: SRR5164436, SRR5164437, SRR5164438, SRR5164443, SRR5164445
+* Low fat diet: SRR5164439
+* High fat diet: SRR5164440
+* Fasted: SRR5164441, SRR5164444, SRR5164446
+* Refed: SRR5164442
+
+A function has been created that can import and join expression matrices from different mice treated with the same conditions.
+
+```{r}
+
+## for loop function that loads files and joins them together into one seurat object:
+
+Create_joined_seurat_object<- function(file_list) {
+
+
+
+  ## Process the first file:
+ file_to_process<- file_list[1]
+
+  ## Load object
+  campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  first_table<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+  ## Create new column names
+ colnames(first_table)<- paste0(file_to_process, "_",                                                          colnames(first_table))
+  
+ ## Use tibble function to move rownames to a column
+ first_table<- rownames_to_column(first_table, var = "gene_ID")
+
+
+## For loop to process the rest of the files:
+for (i in 2:length(file_list)) {
+  
+  ## Process the first file:
+ file_to_process<- file_list[i]
+
+  ## Load object
+  campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  second_table<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+  ## Create new column names
+ colnames(second_table)<- paste0(file_to_process, "_",                                                          colnames(second_table))
+  
+ ## Use tibble function to move rownames to a column
+ second_table<- rownames_to_column(second_table, var = "gene_ID")
+
+  ## join tables together
+  first_table<- dplyr::full_join(first_table, second_table, by = "gene_ID")
+  
+}
+
+final_table<- column_to_rownames(first_table, var = "gene_ID" )
+
+return(final_table)
+
+}
+
+
+```
+
+
+## Create and save a seurat object contaiing all five replicates for mice fed on normal CHOW.
+
+```{r}
+
+
+## Create CHOW expression matrix:
+CHOW_file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
+
+
+## Use function to join expression matrices
+campbell_CHOW_expression_matrix<- Create_joined_seurat_object(CHOW_file_list)
+
+dim(campbell_CHOW_expression_matrix)
+
+campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
+###########
+## Replace na's in table to 0:
+
+campbell_CHOW_expression_matrix[is.na(campbell_CHOW_expression_matrix)] <- 0 # Despite what the forums say this method was quickist
+
+dim(campbell_CHOW_expression_matrix)
+
+campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
+#############
+## Hsitogram of how many genes are expressed in each cell : 
+at_least_one <- apply(campbell_CHOW_expression_matrix, 2, function(x) sum(x>0))
+
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+
+## Histogram of number of counts per cell: 
+colsums_vector<-colSums(campbell_CHOW_expression_matrix)
+
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+
+############
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_chow <- CreateSeuratObject(raw.data = campbell_CHOW_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_CHOW")
+
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_chow
+# from : 35573 cells and 37406 genes
+# to : 11255 cells and 30000 genes
+
+
+##############
+## Add mouse replicate info into  metadata
+
+## Investigate the meta data
+head(seurat_campbell_chow@meta.data)
+
+
+## Create vector with mouse replicate name i.e. name of SRR... fastq file 
+replicate_name<- rownames(seurat_campbell_chow@meta.data)
+
+names(replicate_name)<- replicate_name
+
+replicate_name<-gsub("\\_.*", "", replicate_name)
+
+## Add metadata to seurat object
+seurat_campbell_chow <- AddMetaData(object = seurat_campbell_chow,
+                    metadata = replicate_name,
+                    col.name = "replicate_name")
+
+
+# Investigate the meta data
+head(seurat_campbell_chow@meta.data)
+seurat_campbell_chow@meta.data[c(1:5, 11001:11005),]
+
+
+## save object:
+# saveRDS(seurat_campbell_chow, file = "./seurat_campbell_chow_just_created.rds")
+
+
+
+```
+
+
+## Create and save a seurat object containing all three replicates for fasted mice.
+
+
+```{r}
+
+
+## Create fasted expression matrix:
+fasted_file_list<- c("SRR5164441", "SRR5164444", "SRR5164446")
+
+
+## Use function to join expression matrices
+campbell_fasted_expression_matrix<- Create_joined_seurat_object(fasted_file_list)
+
+dim(campbell_fasted_expression_matrix)
+# [1] 31887 35277
+
+campbell_fasted_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
+###########
+## Replace na's in table to 0:
+
+campbell_fasted_expression_matrix[is.na(campbell_fasted_expression_matrix)] <- 0 # Despite what the forums say this method was quickist
+
+dim(campbell_fasted_expression_matrix)
+
+campbell_fasted_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
+#############
+## Hsitogram of how many genes are expressed in each cell : 
+at_least_one <- apply(campbell_fasted_expression_matrix, 2, function(x) sum(x>0))
+
+summary (at_least_one)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#    1.0   245.0   325.0   454.9   499.0  7195.0 
+    
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+
+## Histogram of number of counts per cell: 
+colsums_vector<-colSums(campbell_fasted_expression_matrix)
+
+summary(colsums_vector)
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#      2     312     421     676     676   30958 
+
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+
+############
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_fasted <- CreateSeuratObject(raw.data = campbell_fasted_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_CHOW")
+
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_fasted
+# from : 35277 cells and 31887 genes
+# to : 3783 cells and 21789 genes
+
+
+##############
+## Add mouse replicate info into  metadata
+
+## Investigate the meta data
+head(seurat_campbell_fasted@meta.data)
+
+
+## Create vector with mouse replicate name i.e. name of SRR... fastq file 
+replicate_name<- rownames(seurat_campbell_fasted@meta.data)
+
+names(replicate_name)<- replicate_name
+
+replicate_name<-gsub("\\_.*", "", replicate_name)
+
+## Add metadata to seurat object
+seurat_campbell_fasted <- AddMetaData(object = seurat_campbell_fasted,
+                    metadata = replicate_name,
+                    col.name = "replicate_name")
+
+
+# Investigate the meta data
+head(seurat_campbell_fasted@meta.data)
+seurat_campbell_fasted@meta.data[c(1:5, 3001:3005),]
+
+
+## save object:
+# saveRDS(seurat_campbell_fasted, file = "./seurat_campbell_fasted_just_created.rds")
+
+
+
+
+```
+
+
+## Create and save a seurat object containing a single replicate of a mouse on a High fat diet.
+
+
+```{r}
+
+
+
+
+```
+
+
+
