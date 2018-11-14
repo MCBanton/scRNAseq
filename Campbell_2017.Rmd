@@ -17,42 +17,1021 @@ Source of data: Campbell, J.N., Macosko, E.Z., Fenselau, H., Pers, T.H., Lyubets
 
 * <https://www.nature.com/articles/nn.4495>
 
+## Load packages and set working directory
+
+```{r}
+
+library(tidyverse)
+library(scater)
+library(dplyr)
+library(limma)
+library(SingleCellExperiment)
+library(Seurat)
+library(mclust)
+library(Matrix)
+library(tibble)
+
+setwd("/media/data/mattb/projects/Brian_scRNAseq_website/R_projects/mouse_hypothalamus_scRNAseq")
+
+```
+
+## Import expression matrix
+
+An expression matrix for each mouse replicate from the Campbell paper was created using zUMIs.
+
+Descrive zUMIs here and give a link:....
+
+### Import SRR5164443 into seurat
+
+SRR5164443 is the smallest dataset so the seurat scRNAseq analysis will be perofmed on this mouse replicate first. SRR5164443 is a CHOW fed mouse (replicate 4 of 5) that was processed on day 6.
 
 
 ```{r}
 
+# Load zUMI data and assign a variable name
+campbell_zUMIs_object<- readRDS("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/SRR5164443/zUMIs_output/expression/SRR5164443_default_STAR.dgecounts.rds")
+
+campbell_expression_matrix<-  as.matrix(campbell_zUMIs_object$umicount$exon$all)
+
+dim(campbell_expression_matrix)
+# 4851 cells detected and 23543 genes.
+
+campbell_expression_matrix[1:5,1:5]
+
+# Summary of total expression per cell:
+summary(colSums(campbell_expression_matrix))
+
+# write.csv(campbell_expression_matrix,"campbell_SRR5164443_expression_matrix.csv", quote=F)
+
+## Manually check the number of genes detected in three or more cells
+# a lot of genes are not detected in 3 or more cells
+tmp <- apply(campbell_expression_matrix, 1, function(x) sum(x>0))
+table(tmp>=3)
+ 
+# FALSE  TRUE 
+#  5354 18189
+ 
+keep <- tmp>=3
+tmp <- campbell_expression_matrix[keep,]
+at_least_one <- apply(tmp, 2, function(x) sum(x>0))
+summary(at_least_one)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#      1     195     261     390     423    5761 
+  
+## Cells have between 1 and 5761 genes expressed. Median is 261 genes per cell. Very few!!
+## Campbell paper used minimum of 800 genes per cell!
+
+dim(tmp)
+# [1] 18189  4851
+
+## Hitogram of how many genes per cell and number of counts per cell: 
+at_least_one <- apply(campbell_expression_matrix, 2, function(x) sum(x>0))
+par(mfrow=c(1,2)) # One row and two columns
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+hist(colSums(campbell_expression_matrix),
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell <- CreateSeuratObject(raw.data = campbell_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL")
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell
+# 17816 genes across 3515 samples (for 200 genes per cell)
+# 14861 genes across 401 samples (for 800 genes per cell)
+
+class(seurat_campbell)
+seurat_campbell@data[1:5,1:5]
+dim(seurat_campbell@data)
+
+slotNames(seurat_campbell)
 ```
+
+## QC cells
+
+
+```{r}
+## Import list of mouse mitocondrially encoded genes:
+
+mito_genes_table<- read.csv("mito_genes_table.csv", header = TRUE)
+head(mito_genes_table)
+
+## Make list of mitocondrial gene IDS:
+mito_genes <- mito_genes_table$id_with_url
+mito_genes
+length(mito_genes)
+
+## Identify which mitochondrially expressed gene IDs are present in my dataset:
+test<-seurat_campbell@raw.data[mito_genes, ]
+test
+dim(test)
+rownames(test)
+mito_genes
+
+!grepl("NA", rownames(test))
+mito_genes_present<- mito_genes[!grepl("NA", rownames(test))]
+mito_genes_present
+seurat_campbell@raw.data[mito_genes_present, 1:5]
+dim(seurat_campbell@raw.data[mito_genes_present, ])
+
+## Calculate the percentage of mitcondrial gene counts per cell
+percent_mito <- Matrix::colSums(seurat_campbell@raw.data[mito_genes_present, ])/Matrix::colSums(seurat_campbell@raw.data)
+percent_mito
+summary(percent_mito)
+class(percent_mito)
+rownames(percent_mito)
+
+# Investigate the meta data
+head(seurat_campbell@meta.data)
+
+# add percentage mitocondrial genes into metadata
+seurat_campbell <- AddMetaData(object = seurat_campbell,
+                    metadata = percent_mito,
+                    col.name = "percent_mito")
+
+
+#add mouse replicate into  metadata
+
+
+experiment_name<- rep("SRR5164443", length(percent_mito))
+names(experiment_name)<- names(percent_mito)
+
+seurat_campbell <- AddMetaData(object = seurat_campbell,
+                    metadata = experiment_name,
+                    col.name = "experiment")
+
+# Investigate the meta data
+head(seurat_campbell@meta.data)
+
+# plot number of genes, UMIs, and % mitochondria
+VlnPlot(object = seurat_campbell,
+        features.plot = c("nGene", "nUMI", "percent_mito"),
+        nCol = 3)
+
+
+# GenePlot is typically used to visualize gene-gene relationships, but can
+# be used for anything calculated by the object, i.e. columns in
+# object@meta.data, PC scores etc.  Since there is a rare subset of cells
+# with an outlier level of high mitochondrial percentage and also low UMI
+# content, we filter these as well
+par(mfrow = c(1, 2))
+GenePlot(object = seurat_campbell, gene1 = "nUMI", gene2 = "percent_mito")
+GenePlot(object = seurat_campbell, gene1 = "nUMI", gene2 = "nGene")
+
+```
+
+## Filter cells
+
+
+```{r}
+
+# manual check; I already know all cells have >200 genes
+table(seurat_campbell@meta.data$percent_mito < 0.005 & seurat_campbell@meta.data$nGene<5000)
+ 
+
+# FALSE  TRUE 
+#   16   385 
+ 
+# perform the filtering using FilterCells()
+seurat_campbell <- FilterCells(object = seurat_campbell,
+                    subset.names = c("nGene", "percent_mito"),
+                    low.thresholds = c(800, -Inf),
+                    high.thresholds = c(5000, 0.005))
+ 
+# 62 cells are filtered out; numbers consistent with above
+seurat_campbell
+# An object of class seurat in project CAMPBELL 
+# 14861 genes across 385 samples.
+ 
+ 
+```
+
+## Normalising data
+
+
+
+After removing unwanted cells from the dataset, the next step is to normalize the data. By default, we employ a global-scaling normalization method “LogNormalize” that normalizes the gene expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result.
+
+```{r}
+
+## Plot graph of total expression before normalisation
+
+hist(colSums(seurat_campbell@data),
+     breaks = 100,
+     main = "Total expression before normalisation",
+     xlab = "Sum of expression")
+
+seurat_campbell <- NormalizeData(object = seurat_campbell, normalization.method = "LogNormalize", 
+    scale.factor = 1e4)
+
+hist(colSums(seurat_campbell@data),
+     breaks = 100,
+     main = "Total expression after normalisation",
+     xlab = "Sum of expression")
+
+```
+
+## Find variable genes between cells for use in PC analysis later
+
+
+```{r}
+# the variable genes slot is empty before the analysis
+seurat_campbell@var.genes
+
+ 
+# Find the variable genes using FindVariableGenes function (it is recommended to play with these setting to find the best results:)
+?FindVariableGenes
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.0125,
+                          x.high.cutoff = 3,
+                          y.cutoff = 0.5)
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.0125,
+                          x.high.cutoff = 3,
+                          y.cutoff = 0.5,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.0125,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 20,
+                          binning.method = "equal_frequency"
+                          )
+length(seurat_campbell@var.genes)
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 40,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 50,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 40,
+                          binning.method = "equal_frequency"
+                          )
+length(seurat_campbell@var.genes)
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 1,
+                          num.bin = 40,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.1,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 50,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 50,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+
+
+
+# vector of variable genes
+head(seurat_campbell@var.genes)
+seurat_campbell@data["ENSMUSG00000000058",]
+ 
+# number of variable genes
+length(seurat_campbell@var.genes)
+
+ 
+# mean and variance of genes are stored pbmc@hvg.info
+head(seurat_campbell@hvg.info)
+
+seurat_campbell@data["ENSMUSG00000022548",]
+```
+## Scaling the data and removing unwanted sources of variation
+
+```{r}
+## slot is empty before running ScaleData()
+seurat_campbell@scale.data
+
+## build linear model using nUMI and percent_mito
+## May need to do this for difference mouse replicates.
+seurat_campbell <- ScaleData(object = seurat_campbell, vars.to.regress = c("nUMI", "percent_mito"))
+
+class(seurat_campbell@scale.data)
+
+```
+
+
+
+
+## Perform PC analysis for dimensional reduction for use in clustering later
+
+Next we perform PCA on the scaled data. By default, the genes in object@var.genes are used as input, but can be defined using pc.genes. We have typically found that running dimensionality reduction on highly variable genes can improve performance. However, with UMI data - particularly after regressing out technical variables, we often see that PCA returns similar (albeit slower) results when run on much larger subsets of genes, including the whole transcriptome.
+
+```{r}
+
+
+seurat_campbell <- RunPCA(object = seurat_campbell,
+               pc.genes = seurat_campbell@var.genes,
+               do.print = TRUE,
+               pcs.print = 1:5,
+               genes.print = 5)
+
+PrintPCAParams(seurat_campbell)
+
+# Following function not found. Replaces with the one above?
+# GetCalcParam(object = seurat_campbell, calculation = "RunPCA", parameter = "pc.genes")
+ 
+## Seurat provides several useful ways of visualizing both cells and genes that define the PCA, including PrintPCA, VizPCA, PCAPlot, and PCHeatmap
+
+PrintPCA(object = seurat_campbell, pcs.print = 1:5, genes.print = 5, use.full = FALSE)
+ 
+# visualise top genes associated with principal components
+VizPCA(object = seurat_campbell, pcs.use = 1:4)
+
+# The PCAPlot() function plots the principal components from a PCA; cells are coloured by their identity class according to seurat_campbell@ident.
+PCAPlot(object = seurat_campbell, dim.1 = 1, dim.2 = 2)
+
+# In particular PCHeatmap allows for easy exploration of the primary sources of heterogeneity in a dataset, and can be useful when trying to decide which PCs to include for further downstream analyses. Both cells and genes are ordered according to their PCA scores. Setting cells.use to a number plots the ‘extreme’ cells on both ends of the spectrum, which dramatically speeds plotting for large datasets. Though clearly a supervised analysis, we find this to be a valuable tool for exploring correlated gene sets.
+PCHeatmap(object = seurat_campbell, pc.use = 1, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+PCHeatmap(object = seurat_campbell, pc.use = 2, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+## Ignore warnings!
+
+## Plotting multiple heatmaps
+PCHeatmap(object = seurat_campbell,
+          pc.use = 1:16,
+          cells.use = 500,
+          do.balanced = TRUE,
+          label.columns = FALSE)
+
+
+## However, the PCA was only performed on the most variable genes, which is a subset of the dataset. The ProjectPCA step scores each gene in the dataset based on their correlation with the calculated components. This is useful because there may be genes that were not detected as variable genes in the variable gene selection step, which are still strongly correlated with cellular heterogeneity.
+# the results of the projected PCA can be explored by setting use.full=TRUE in the functions above
+?ProjectPCA
+seurat_campbell <- ProjectPCA(object = seurat_campbell, do.print = TRUE)
+
+```
+
+
+
+
+## Determine statistically significant principal components
+
+To overcome the extensive technical noise in any single gene for scRNA-seq data, Seurat clusters cells based on their PCA scores, with each PC essentially representing a ‘metagene’ that combines information across a correlated gene set. Determining how many PCs to include downstream is therefore an important step.
+
+The next steps are to determine how many principal components to use in downstream analyses, which is an important step for Seurat. The tutorial goes through two methods: one uses a statistical test based on a random null model, which is time-consuming for large datasets due to the resampling and may not return a clear cutoff and the other is a commonly used heuristic. The statistical test is carried out by the JackStraw() function, which randomly permutes a subset of data, and calculates projected PCA scores for these “random” genes. Then compares the PCA scores for the “random” genes with the observed PCA scores to determine statistical significance. End result is a p-value for each gene’s association with each principal component. This resampling test was inspired by the jackstraw procedure. Significant principal components are those with a strong enrichment of low p-value genes.
+
+```{r}
+# NOTE: This process can take a long time for big datasets, comment out for expediency.
+# More approximate techniques such as those implemented in PCElbowPlot() can be used to reduce computation time
+?JackStraw
+seurat_campbell <- JackStraw(object = seurat_campbell,
+                  num.replicate = 100,
+                  display.progress = TRUE
+                  )
+
+## The JackStrawPlot() function provides a visualisation tool for comparing the distribution of p-values for each principal component with a uniform distribution (dashed line). “Significant” principal components will show a strong enrichment of genes with low p-values (solid curve above the dashed line).
+JackStrawPlot(object = seurat_campbell, PCs = 1:20)
+## Maybe up to the 14th PC?
+
+## A less computationally intensive heuristic method for finding the statistically significant PCAs is using an elbow plot 
+PCElbowPlot(object = seurat_campbell)
+
+
+```
+
+### comment from the authours:
+' We followed the jackStraw here, admittedly buoyed by seeing the PCHeatmap returning interpretable signals (including canonical dendritic cell markers) throughout these PCs. Though the results are only subtly affected by small shifts in this cutoff (you can test below), we strongly suggest always explore the PCs they choose to include downstream.'
+
+Looks like I need to be very careful at choosing the right number of PCs for down stream analysis? Maybe try different values?!
+
+
+## Cell clustering
+
+The FindClusters() function implements the clustering procedure. The resolution parameter adjusts the granularity of the clustering with higher values leading to more clusters, i.e. higher granularity. According to the authors of Seurat, setting resolution between 0.6 – 1.2 typically returns good results for datasets with around 3,000 cells. The clusters are saved in the @ident slot of the Seurat object.
+
+```{r}
+# save.SNN = T saves the SNN so that the clustering algorithm can be rerun
+# using the same graph but with a different resolution value (see docs for
+# full details)
+?FindClusters
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:14, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE)
+# if you get the error
+# No Java runtime present, requesting install.
+# you need to download and install the Java SE Development Kit
+# http://www.oracle.com/technetwork/java/javase/downloads/index.html
+ 
+# save.SNN = TRUE saves the SNN so that the clustering algorithm can be rerun using the same graph
+# but with a different resolution value see ?FindClusters
+
+
+## A useful feature in Seurat v2.0 is the ability to recall the parameters that were used in the latest function calls for commonly used functions. For FindClusters, we provide the function PrintFindClustersParams to print a nicely formatted formatted summary of the parameters that were chosen.
+PrintFindClustersParams(object = seurat_campbell)
+
+```
+
+
+
+
+
+## Create t-SNE plot and overlay the clusters identified above on plot
+
+Seurat continues to use tSNE as a powerful tool to visualize and explore these datasets. While we no longer advise clustering directly on tSNE components, cells within the graph-based clusters determined above should co-localize on the tSNE plot. This is because the tSNE aims to place cells with similar local neighborhoods in high-dimensional space together in low-dimensional space. As input to the tSNE, we suggest using the same PCs as input to the clustering analysis, although computing the tSNE based on scaled gene expression is also supported using the genes.use argument.
+
+
+```{r}
+?RunTSNE
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:14, do.fast = TRUE)
+
+# note that you can set do.label=T to help label individual clusters
+TSNEPlot(object = seurat_campbell)
+```
+
+
+
+
+
+## Optimise the clustering and visualise using t-SNE
+
+```{r}
+############### dims.use = 1:14 resolution = 0.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:14, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:14, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 3 clusters
+
+############### dims.use = 1:14 resolution = 1.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:14, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:14, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 5 clusters
+
+############### dims.use = 1:14 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:14, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:14, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 5 clusters
+
+############### dims.use = 1:14 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:14, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:14, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 7 clusters
+
+
+
+
+
+
+
+############### dims.use = 1:16 resolution = 0.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:16, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:16, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 3 clusters
+
+############### dims.use = 1:16 resolution = 1.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:16, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:16, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 4 clusters
+
+############### dims.use = 1:16 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:16, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:16, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 5 clusters
+
+############### dims.use = 1:16 resolution = 1.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:16, 
+    resolution = 1.6, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:16, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+
+############### dims.use = 1:16 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:16, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:16, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 7 clusters
+
+
+
+
+
+
+
+
+
+############### dims.use = 1:9 resolution = 0.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:9, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:9, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 3 clusters
+
+############### dims.use = 1:9 resolution = 1.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:9, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:9, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 3 clusters
+
+############### dims.use = 1:9 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:9, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:9, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+
+############### dims.use = 1:9 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:9, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:9, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 8 clusters
+
+
+
+
+
+############### dims.use = 1:12 resolution = 0.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:12, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:12, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 3 clusters
+
+############### dims.use = 1:12 resolution = 1.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:12, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:12, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 4 clusters
+
+############### dims.use = 1:12 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:12, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:12, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+
+############### dims.use = 1:12 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:12, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:12, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 9 clusters
+
+
+
+
+```
+
+
+dims.use = 1:16 resolution = 1.6 might be best?
+
+
+## How does reducing the number of genes for the PC analysis by increasing the minimum cut-off value affect the clustering?
+
+```{r}
+
+seurat_campbell <- FindVariableGenes(object = seurat_campbell,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 1,
+                          num.bin = 40,
+                          binning.method = "equal_width"
+                          )
+length(seurat_campbell@var.genes)
+
+## Normalise data
+seurat_campbell <- ScaleData(object = seurat_campbell, vars.to.regress = c("nUMI", "percent_mito"))
+
+## run PCA
+seurat_campbell <- RunPCA(object = seurat_campbell,
+               pc.genes = seurat_campbell@var.genes,
+               do.print = TRUE,
+               pcs.print = 1:5,
+               genes.print = 5)
+
+PrintPCAParams(seurat_campbell)
+ 
+# visualise top genes associated with principal components
+VizPCA(object = seurat_campbell, pcs.use = 1:4)
+
+PCAPlot(object = seurat_campbell, dim.1 = 1, dim.2 = 2)
+
+## Plotting multiple heatmaps
+PCHeatmap(object = seurat_campbell,
+          pc.use = 1:16,
+          cells.use = 500,
+          do.balanced = TRUE,
+          label.columns = FALSE)
+
+seurat_campbell <- ProjectPCA(object = seurat_campbell, do.print = TRUE)
+
+## Find statistically significant PCAs
+
+seurat_campbell <- JackStraw(object = seurat_campbell,
+                  num.replicate = 100,
+                  display.progress = TRUE
+                  )
+
+JackStrawPlot(object = seurat_campbell, PCs = 1:20)
+## Maybe up to the 16th PC?
+
+PCElbowPlot(object = seurat_campbell)
+## Maybe up to the 11th or 17th PC?
+
+################
+## optimise clustering
+
+############### dims.use = 1:11 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:11, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:11, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+
+############### dims.use = 1:11 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:11, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:11, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 10 clusters
+
+
+
+
+
+
+
+
+
+
+
+############### dims.use = 1:17 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+
+############### dims.use = 1:17 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 9 clusters
+
+
+
+```
+
+I think using more genes (original) analysis looks best as does including more PC dimensions in the FindClustersParams function. Probably PC =  1:14, resolution 1.6?
+
+
+## Finding differentially expressed genes (cluster biomarkers)
+
+```{r}
+
+
+```
+
+
+
+
+
+## Assigning cell type identity to clusters
+
+```{r}
+
+
+```
+
+
+
+
+
+## Join Campbell repeats together
+
+CHOW fed: SRR5164436, SRR5164437, SRR5164438, SRR5164443, SRR5164445
+Low fat diet: SRR5164439
+High fat diet: SRR5164440
+Fasted: SRR5164441, SRR5164444, SRR5164446
+Refed: SRR5164442
+
+```{r}
+
+## for loop function that loads files and joins them together into one seurat object:
+
+file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
+
+
+Create_joined_seurat_object<- function(file_list) {
+
+
+
+  ## Process the first file:
+ file_to_process<- file_list[1]
+
+  ## Load object
+  campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  first_table<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+  ## Create new column names
+ colnames(first_table)<- paste0(file_to_process, "_",                                                          colnames(first_table))
+  
+ ## Use tibble function to move rownames to a column
+ first_table<- rownames_to_column(first_table, var = "gene_ID")
+
+
+## For loop to process the rest of the files:
+for (i in 2:length(file_list)) {
+  
+  ## Process the first file:
+ file_to_process<- file_list[i]
+
+  ## Load object
+  campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  second_table<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+  ## Create new column names
+ colnames(second_table)<- paste0(file_to_process, "_",                                                          colnames(second_table))
+  
+ ## Use tibble function to move rownames to a column
+ second_table<- rownames_to_column(second_table, var = "gene_ID")
+
+  ## join tables together
+  first_table<- dplyr::full_join(first_table, second_table, by = "gene_ID")
+  
+}
+
+final_table<- column_to_rownames(first_table, var = "gene_ID" )
+
+return(final_table)
+
+}
+
+
+## Use function to create an object for each mouse repeat:
+
+file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
+
+file_list2<- c("SRR5164436", "SRR5164437")
+
+test<- Create_joined_seurat_object(file_list2)
+dim(test)
+test[c(1:6, 19000:19006),c(1:6, 19000:19006)]
+
+file_list3<- c("SRR5164436", "SRR5164437", "SRR5164438")
+test3<- Create_joined_seurat_object(file_list3)
+dim(test3)
+test3[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+campbell_CHOW_expression_matrix<- Create_joined_seurat_object(file_list)
+dim(campbell_CHOW_expression_matrix)
+campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
+
+
+  
+```
+
 
 ## Title
 
-
 ```{r}
 
-```
-
-
-
-```{r}
 
 ```
 
 
 
 
-```{r}
-
-```
 
 
 
 
-```{r}
-
-```
 
 
 
-
-```{r}
-
-```

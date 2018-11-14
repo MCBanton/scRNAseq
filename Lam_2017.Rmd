@@ -1,0 +1,51 @@
+---
+title: "Lam_2017"
+author: "Matthew Banton"
+date: "09/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Re-analysis of mouse hypothalamic scRNAseq data from Lam et. al., 2017
+
+Source of data: Lam, B.Y., Cimino, I., Polex-Wolf, J., Kohnke, S.N., Rimmington, D., Iyemere, V., Heeley, N., Cossetti, C., Schulte, R., Saraiva, L.R. and Logan, D.W., 2017. Heterogeneity of hypothalamic pro-opiomelanocortin-expressing neurons revealed by single-cell RNA sequencing. Molecular metabolism, 6(5), pp.383-392.
+
+* <https://www.ncbi.nlm.nih.gov/pubmed/28462073>
+
+* <https://www.sciencedirect.com/science/article/pii/S2212877817300595>
+
+## Load packages:
+
+```{r}
+
+install.packages("tidyverse", dependencies=TRUE)
+source("https://bioconductor.org/biocLite.R")
+biocLite("BiocUpgrade")
+install.packages("stringi", dependencies=TRUE, type="binary")
+install.packages("dplyr", dependencies=TRUE)
+BiocManager::install
+biocLite("scater", dependencies=TRUE)
+install.packages("limma")
+install.packages(SingleCellExperiment)
+install.packages(Seurat)
+install.packages(mclust)
+
+library(tidyverse)
+library(scater)
+library(dplyr)
+library(limma)
+library(SingleCellExperiment)
+library(Seurat)
+library(mclust)
+
+```
+
+## Title
+
+
+```{r}
+
+```

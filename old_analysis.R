@@ -2,16 +2,34 @@
 ### Create scRNA-seq expression matrix #### 
 ##################-
 
+https://satijalab.org/seurat/pbmc3k_tutorial.html
+https://satijalab.org/seurat/de_vignette.html
 https://hemberg-lab.github.io/scRNA.seq.course/cleaning-the-expression-matrix.html#expression-qc-reads
+https://davetang.org/muse/2017/08/01/getting-started-seurat/
 https://bioconductor.org/packages/devel/bioc/vignettes/scater/inst/doc/vignette-dataviz.html
-
+https://www.biostars.org/p/314881/
+https://bioinformatics.stackexchange.com/questions/4470/mapping-a-list-of-cells-in-seurat-featureplot
+https://www.biostars.org/p/311950/
+  
 ### Load packages
 # install.packages("tidyverse", dependencies=TRUE)
 # source("https://bioconductor.org/biocLite.R")
-# install.packages("stringi", dependencies=TRUE, type="binary")
+# biocLite("BiocUpgrade")
+# install.packages("stringi", dependencies=TRUE)
 # install.packages("dplyr", dependencies=TRUE)
-# biocLite("scater", dependencies=TRUE)
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install("scater", version = "3.8")
 # install.packages("limma")
+# BiocManager::install("SingleCellExperiment", version = "3.8")
+# # Install hdf5 tools to install serurat package:
+# # sudo apt update
+# # sudo apt-get install hdf5-tools
+# # sudo apt-get install libhdf5-dev
+# install.packages("Seurat")
+# install.packages("mclust")
+# install.packages("Matrix")
+
 library(tidyverse)
 library(scater)
 library(dplyr)
@@ -19,7 +37,7 @@ library(limma)
 library(SingleCellExperiment)
 library(Seurat)
 library(mclust)
-
+library(Matrix)
 
 ### Create fake data
 # df1<- data.frame(cbind(c("E1","E2","E3","E4","E5","E6","E7","E8","E9","E10", "E11"), c(0,0,0,3,0,10,0,1,2,0, 2)))
@@ -162,8 +180,11 @@ write.csv(expression_matrix, file = "Romanov_expression_matrix_raw_counts.csv", 
 
 ### Import expression matrix
 
-lam_expression_matrix<- read.csv("./final_counts/Lam_expression_matrix_raw_counts.csv", header = TRUE, stringsAsFactors = FALSE)
+## Server1
+setwd("/media/data/mattb/projects/Brian_scRNAseq_website/R_projects/mouse_hypothalamus_scRNAseq/")
 
+lam_expression_matrix<- read.csv("./Lam_expression_matrix_raw_counts.csv", header = TRUE, stringsAsFactors = FALSE)
+lam_expression_matrix[1:10, 1:10]
 rownames(lam_expression_matrix)<-lam_expression_matrix[,1]
 
 
@@ -339,9 +360,10 @@ rownames(lam_expression_matrix)
 
 ### Set working directory
 setwd("/Users/Matt/Documents/Other projects and helping people/Brian/180209 Single_cell_website/Data/Lam_et_al/STAR_counts/")
+setwd("/media/data/mattb/projects/Brian_scRNAseq_website/R_projects/mouse_hypothalamus_scRNAseq/")
 
 ## Load expression matrix containing raw read counts
-lam_expression_matrix<- read.csv("./final_counts/Lam_expression_matrix_raw_counts.csv", header = TRUE, stringsAsFactors = FALSE)
+lam_expression_matrix<- read.csv("./Lam_expression_matrix_raw_counts.csv", header = TRUE, stringsAsFactors = FALSE)
 
 ## Inspect expression matrix 
 dim(lam_expression_matrix)
