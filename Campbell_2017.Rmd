@@ -362,7 +362,7 @@ seurat_campbell <- FindVariableGenes(object = seurat_campbell,
                           x.low.cutoff = 0.05,
                           x.high.cutoff = 4,
                           y.cutoff = 0.5,
-                          num.bin = 50,
+                          num.bin = 40,
                           binning.method = "equal_width"
                           )
 length(seurat_campbell@var.genes)
@@ -773,10 +773,114 @@ TSNEPlot(object = seurat_campbell)
 
 
 
+
+
+############### dims.use = 1:17 resolution = 0.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 4 clusters
+
+############### dims.use = 1:17 resolution = 1.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 4 clusters
+
+############### dims.use = 1:17 resolution = 1.5
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 5 clusters
+
+############### dims.use = 1:17 resolution = 2.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 8 clusters
+
+
+############### dims.use = 1:17 resolution = 3.0
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 3.0, print.output = 0, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 19 clusters
+
+
+############### dims.use = 1:17 resolution = 1.8
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 1.8, print.output = 0, force.recalc = TRUE, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 7 clusters
+levels(seurat_campbell@ident)
+
+ 
+table(seurat_campbell@ident)
+
+
+############### dims.use = 1:17 resolution = 1.6
+
+seurat_campbell <- FindClusters(object = seurat_campbell, reduction.type = "pca", dims.use = 1:17, 
+    resolution = 1.7, print.output = 0, force.recalc = TRUE, save.SNN = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell)
+
+seurat_campbell <- RunTSNE(object = seurat_campbell, dims.use = 1:17, do.fast = TRUE)
+
+TSNEPlot(object = seurat_campbell)
+
+## 6 clusters
+levels(seurat_campbell@ident)
+
+ 
+table(seurat_campbell@ident)
+##
 ```
 
 
-dims.use = 1:16 resolution = 1.6 might be best?
+dims.use = 1:17 resolution = 1.5 or 1.7 might be best?
 
 
 ## How does reducing the number of genes for the PC analysis by increasing the minimum cut-off value affect the clustering?
@@ -902,12 +1006,168 @@ TSNEPlot(object = seurat_campbell)
 
 ```
 
-I think using more genes (original) analysis looks best as does including more PC dimensions in the FindClustersParams function. Probably PC =  1:14, resolution 1.6?
+I think using more genes (original) analysis looks best as does including more PC dimensions in the FindClustersParams function. dims.use = 1:17 resolution = 1.8 might be best??
+
+
+## Save object so it can be imported easily in the future.
+
+```{r}
+
+#saveRDS(seurat_campbell, file = "./seurat_campbell.rds")
+
+
+```
+
 
 
 ## Finding differentially expressed genes (cluster biomarkers)
 
+Seurat can help you find markers that define clusters via differential expression. By default, it identifes positive and negative markers of a single cluster (specified in ident.1), compared to all other cells. FindAllMarkers automates this process for all clusters, but you can also test groups of clusters vs. each other, or against all cells.
+
+The min.pct argument requires a gene to be detected at a minimum percentage in either of the two groups of cells, and the thresh.test argument requires a gene to be differentially expressed (on average) by some amount between the two groups. You can set both of these to 0, but with a dramatic increase in time - since this will test a large number of genes that are unlikely to be highly discriminatory. As another option to speed up these computations, max.cells.per.ident can be set. This will downsample each identity class to have no more cells than whatever this is set to. While there is generally going to be a loss in power, the speed increases can be significiant and the most highly differentially expressed genes will likely still rise to the top.
+
 ```{r}
+
+# find all markers of cluster 3
+cluster3_markers <- FindMarkers(object = seurat_campbell, ident.1 = 3, min.pct = 0.2)
+print(x = head(x = cluster3_markers, n = 5))
+
+
+# find all markers distinguishing cluster 1 from clusters 0 and 4
+cluster5_markers <- FindMarkers(object = seurat_campbell, ident.1 = 1, ident.2 = c(0, 4), 
+    min.pct = 0.2)
+print(x = head(x = cluster5_markers, n = 5))
+
+# find markers for every cluster compared to all remaining cells, report
+# Positive and negative ones.
+?FindAllMarkers
+seurat_campbell_markers <- FindAllMarkers(object = seurat_campbell, only.pos = FALSE, min.pct = 0.2)
+top10_seurat_campbell_markers<- seurat_campbell_markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+top10_seurat_campbell_markers
+# write.csv(as.data.frame(top10_seurat_campbell_markers), file = "top10_seurat_campbell_markers", quote = FALSE)
+
+
+# Seurat has several tests for differential expression which can be set with the test.use parameter (see our DE vignette for details). For example, the ROC test returns the ‘classification power’ for any individual marker (ranging from 0 - random, to 1 - perfect).
+cluster1_markers_ROC <- FindMarkers(object = seurat_campbell, ident.1 = 1, thresh.use = 0.2, 
+    test.use = "roc")
+cluster1_markers_ROC
+
+seurat_campbell_markers_ROC <- FindAllMarkers(object = seurat_campbell, only.pos = FALSE, min.pct = 0.2, test.use = "roc")
+top10_seurat_campbell_markers_ROC<- seurat_campbell_markers_ROC %>% group_by(cluster) %>% top_n(10, avg_logFC)
+top10_seurat_campbell_markers_ROC
+write.csv(as.data.frame(top10_seurat_campbell_markers_ROC), file = "top10_seurat_campbell_markers_ROC", quote = FALSE)
+
+
+#### Comapre DE methods:
+
+levels(seurat_campbell@ident)
+
+ 
+table(seurat_campbell@ident)
+ 
+# 0  1  2  3  4  5  6 
+# 74 73 72 68 50 46  2 
+ 
+my_bimod <- FindMarkers(object = seurat_campbell,
+                        ident.1 = 0,
+                        thresh.use = 0.2,
+                        test.use = "bimod",
+                        only.pos = TRUE)
+ 
+my_roc <- FindMarkers(object = seurat_campbell,
+                      ident.1 = 0,
+                      thresh.use = 0.2,
+                      test.use = "roc",
+                      only.pos = TRUE)
+ 
+my_t <- FindMarkers(object = seurat_campbell,
+                    ident.1 = 0,
+                    thresh.use = 0.2,
+                    test.use = "t",
+                    only.pos = TRUE)
+ 
+# Takes a very long time:
+my_tobit <- FindMarkers(object = seurat_campbell,
+                        ident.1 = 0,
+                        thresh.use = 0.2,
+                        test.use = "tobit",
+                        only.pos = TRUE)
+ 
+# my_mast <- FindMarkers(object = seurat_campbell,
+#                         ident.1 = 0,
+#                         thresh.use = 0.2,
+#                         test.use = "MAST",
+#                         only.pos = TRUE)
+# 
+# my_deseq2 <- FindMarkers(object = seurat_campbell,
+#                         ident.1 = 0,
+#                         thresh.use = 0.2,
+#                         test.use = "DESeq2",
+#                         only.pos = TRUE)
+
+# identical set of genes
+dim(my_bimod)
+# [1] 732   5
+dim(my_roc)
+# [1] 732   7
+dim(my_t)
+# 1] 732   5
+dim(my_tobit)
+# [1] 732   5
+ 
+# the rankings of the genes are quite similar between the methods
+my_gene <- row.names(my_bimod)
+a <- 1:length(my_gene)
+b <- match(my_gene, row.names(my_roc))
+c <- match(my_gene, row.names(my_t))
+d <- match(my_gene, row.names(my_tobit))
+ 
+# bimod vs. bimod
+cor(a, a, method = "spearman")
+# [1] 1
+ 
+# bimod vs. roc
+cor(a, b, method = "spearman")
+# 0.6564564
+ 
+# bimod vs. t
+cor(a, c, method = "spearman")
+# 0.6540798
+ 
+# bimod vs. tobit
+cor(a, d, method = "spearman")
+# 0.6849513
+ 
+par(mfrow=c(2,2))
+barplot(a, main = 'bimod')
+barplot(b, main = 'roc')
+barplot(c, main = 't')
+barplot(d, main = 'tobit')
+
+
+```
+
+
+## Visualise cluster marker genes:
+
+We include several tools for visualizing marker expression. VlnPlot (shows expression probability distributions across clusters), and FeaturePlot (visualizes gene expression on a tSNE or PCA plot) are our most commonly used visualizations. We also suggest exploring RidgePlot, CellPlot, and DotPlot as additional methods to view your dataset.
+
+```{r}
+## shows expression probability distributions across clusters)
+VlnPlot(object = seurat_campbell, features.plot = c("ENSMUSG00000029819", "ENSMUSG00000005705"))
+
+# you can plot raw UMI counts as well
+VlnPlot(object = seurat_campbell, features.plot = c("ENSMUSG00000029819", "ENSMUSG00000005705"), use.raw = TRUE, y.log = TRUE)
+
+FeaturePlot(object = seurat_campbell, features.plot = c("ENSMUSG00000029819", "ENSMUSG00000005705", "ENSMUSG00000021685", "ENSMUSG00000051159"), cols.use = c("grey", "blue"), 
+    reduction.use = "tsne")
+
+## DoHeatmap generates an expression heatmap for given cells and genes. In this case, we are plotting the top 10 markers (or all markers if less than 10) for each cluster.
+
+top10 <- seurat_campbell_markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+# setting slim.col.label to TRUE will print just the cluster IDS instead of
+# every cell name
+DoHeatmap(object = seurat_campbell, genes.use = top10$gene, slim.col.label = TRUE, remove.key = TRUE)
 
 
 ```
@@ -915,12 +1175,46 @@ I think using more genes (original) analysis looks best as does including more P
 
 
 
-
 ## Assigning cell type identity to clusters
 
 ```{r}
-
-
+# current.cluster.ids <- c(0, 1, 2, 3, 4, 5, 6, 7)
+# new.cluster.ids <- c("CD4 T cells", "CD14+ Monocytes", "B cells", "CD8 T cells", 
+#     "FCGR3A+ Monocytes", "NK cells", "Dendritic cells", "Megakaryocytes")
+# pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
+# TSNEPlot(object = pbmc, do.label = TRUE, pt.size = 0.5)
+# 
+# 
+# ## Save old cluster IDs when a new ID is added:
+# 
+# 
+# # First lets stash our identities for later
+# pbmc <- StashIdent(object = pbmc, save.name = "ClusterNames_0.6")
+# 
+# # Note that if you set save.snn=T above, you don't need to recalculate the
+# # SNN, and can simply put: pbmc <- FindClusters(pbmc,resolution = 0.8)
+# pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = 1:10, 
+#     resolution = 0.8, print.output = FALSE)
+# 
+# # Demonstration of how to plot two tSNE plots side by side, and how to color
+# # points based on different criteria
+# plot1 <- TSNEPlot(object = pbmc, do.return = TRUE, no.legend = TRUE, do.label = TRUE)
+# plot2 <- TSNEPlot(object = pbmc, do.return = TRUE, group.by = "ClusterNames_0.6", 
+#     no.legend = TRUE, do.label = TRUE)
+# plot_grid(plot1, plot2)
+# 
+# # Find discriminating markers
+# tcell.markers <- FindMarkers(object = pbmc, ident.1 = 0, ident.2 = 1)
+# 
+# # Most of the markers tend to be expressed in C1 (i.e. S100A4). However, we
+# # can see that CCR7 is upregulated in C0, strongly indicating that we can
+# # differentiate memory from naive CD4 cells.  cols.use demarcates the color
+# # palette from low to high expression
+# FeaturePlot(object = pbmc, features.plot = c("S100A4", "CCR7"), cols.use = c("green", 
+#     "blue"))
+# 
+# pbmc <- SetAllIdent(object = pbmc, id = "ClusterNames_0.6")
+# saveRDS(pbmc, file = "~/Projects/datasets/pbmc3k_final.rds")
 ```
 
 
@@ -994,27 +1288,74 @@ return(final_table)
 
 ## Use function to create an object for each mouse repeat:
 
-file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
+# file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
+# 
+# file_list2<- c("SRR5164436", "SRR5164437")
+# 
+# test<- Create_joined_seurat_object(file_list2)
+# dim(test)
+# test[c(1:6, 19000:19006),c(1:6, 19000:19006)]
+# 
+# file_list3<- c("SRR5164436", "SRR5164437", "SRR5164438")
+# test3<- Create_joined_seurat_object(file_list3)
+# dim(test3)
+# test3[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
 
-file_list2<- c("SRR5164436", "SRR5164437")
 
-test<- Create_joined_seurat_object(file_list2)
-dim(test)
-test[c(1:6, 19000:19006),c(1:6, 19000:19006)]
+## Create CHOW expression matrix:
+CHOW_file_list<- c("SRR5164436", "SRR5164437", "SRR5164438", "SRR5164443", "SRR5164445")
 
-file_list3<- c("SRR5164436", "SRR5164437", "SRR5164438")
-test3<- Create_joined_seurat_object(file_list3)
-dim(test3)
-test3[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
-
-campbell_CHOW_expression_matrix<- Create_joined_seurat_object(file_list)
+campbell_CHOW_expression_matrix<- Create_joined_seurat_object(CHOW_file_list)
 dim(campbell_CHOW_expression_matrix)
 campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
 
+## Replace na's in table to 0:
+
+campbell_CHOW_expression_matrix[is.na(campbell_CHOW_expression_matrix)] <- 0
+dim(campbell_CHOW_expression_matrix)
+campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+## Hitogram of how many genes per cell and number of counts per cell: 
+at_least_one <- apply(campbell_CHOW_expression_matrix, 2, function(x) sum(x>0))
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+colsums_vector<-colSums(campbell_CHOW_expression_matrix)
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_chow <- CreateSeuratObject(raw.data = campbell_CHOW_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_CHOW")
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_chow
+
+## save object:
+saveRDS(seurat_campbell_chow, file = "./seurat_campbell_chow_just_created.rds")
+
+#############
+## Create CHOW seurat object:
 
 
+## Create fasted expression matrix:
+fasted_file_list<- c("SRR5164441", "SRR5164444", "SRR5164446")
 
-  
+campbell_fasted_expression_matrix<- Create_joined_seurat_object(fasted_file_list)
+dim(campbell_fasted_expression_matrix)
+campbell_fasted_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19005, 24000:24005)]
+
+
 ```
 
 
