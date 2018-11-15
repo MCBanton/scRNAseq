@@ -126,7 +126,7 @@ campbell_CHOW_expression_matrix[c(1:6, 19000:19005, 24000:24005),c(1:6, 19000:19
 
 
 #############
-## Hsitogram of how many genes are expressed in each cell : 
+## Histogram of how many genes are expressed in each cell : 
 at_least_one <- apply(campbell_CHOW_expression_matrix, 2, function(x) sum(x>0))
 
 head(at_least_one)
@@ -262,7 +262,7 @@ hist(colsums_vector,
 seurat_campbell_fasted <- CreateSeuratObject(raw.data = campbell_fasted_expression_matrix, 
                                  min.cells = 3, 
                                  min.genes = 800, 
-                                 project = "CAMPBELL_CHOW")
+                                 project = "CAMPBELL_FASTED")
 
 
 # How many cells and genes passed through initial filtering:
@@ -309,6 +309,289 @@ seurat_campbell_fasted@meta.data[c(1:5, 3001:3005),]
 
 
 ```{r}
+# High fat diet: SRR5164440
+
+## Load single R object from zUMIs containing the single expression matrix
+file_to_process<- "SRR5164440"
+
+campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  campbell_hfd_expression_matrix<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+dim(campbell_hfd_expression_matrix)
+# 30504  6329
+
+campbell_hfd_expression_matrix[1:6, 1:6]
+
+
+#############
+## Histogram of how many genes are expressed in each cell : 
+at_least_one <- apply(campbell_hfd_expression_matrix, 2, function(x) sum(x>0))
+
+summary (at_least_one)
+#     Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#      1     449    1061    1459    2097    9514 
+    
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+
+## Histogram of number of counts per cell: 
+colsums_vector<-colSums(campbell_hfd_expression_matrix)
+
+summary(colsums_vector)
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     1     614    1617    2993    3848   57289 
+
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+
+############
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_hfd <- CreateSeuratObject(raw.data = campbell_hfd_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_HFD")
+
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_hfd
+# from : 6329 cells and 30504 genes
+# to : 3778 cells and 23685 genes
+
+
+##############
+## Add mouse replicate info into  metadata
+
+## Investigate the meta data
+head(seurat_campbell_hfd@meta.data)
+
+
+## Create vector with mouse replicate name i.e. name of SRR... fastq file 
+replicate_name<- rep(file_to_process, nrow(seurat_campbell_hfd@meta.data))
+
+names(replicate_name)<- rownames(seurat_campbell_hfd@meta.data)
+
+seurat_campbell_hfd <- AddMetaData(object = seurat_campbell_hfd,
+                    metadata = replicate_name,
+                    col.name = "replicate_name")
+
+# Investigate the meta data
+head(seurat_campbell_hfd@meta.data)
+
+seurat_campbell_hfd@meta.data[c(1:5, 3001:3005),]
+
+
+## save object:
+# saveRDS(seurat_campbell_hfd, file = "./seurat_campbell_hfd_just_created.rds")
+
+
+
+
+```
+
+
+## Create and save a seurat object containing a single replicate of a mouse on a Low fat diet.
+
+
+```{r}
+# Low fat diet: SRR5164439
+
+## Load single R object from zUMIs containing the single expression matrix
+file_to_process<- "SRR5164439"
+
+campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+## extract counts from object
+campbell_lfd_expression_matrix<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+dim(campbell_lfd_expression_matrix)
+# 29988  5353
+
+campbell_lfd_expression_matrix[1:6, 1:6]
+
+
+#############
+## Histogram of how many genes are expressed in each cell : 
+at_least_one <- apply(campbell_lfd_expression_matrix, 2, function(x) sum(x>0))
+
+summary (at_least_one)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     3     533    1130    1506    2071    8471 
+    
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+
+## Histogram of number of counts per cell: 
+colsums_vector<-colSums(campbell_lfd_expression_matrix)
+
+summary(colsums_vector)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     7     724    1721    3109    3810   38435 
+
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+
+############
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_lfd <- CreateSeuratObject(raw.data = campbell_lfd_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_LFD")
+
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_lfd
+# from : 5353 cells and 29988 genes
+# to : 3347 cells and 23273 genes
+
+  
+##############
+## Add mouse replicate info into  metadata
+
+## Investigate the meta data
+head(seurat_campbell_lfd@meta.data)
+
+
+## Create vector with mouse replicate name i.e. name of SRR... fastq file 
+replicate_name<- rep(file_to_process, nrow(seurat_campbell_lfd@meta.data))
+
+names(replicate_name)<- rownames(seurat_campbell_lfd@meta.data)
+
+seurat_campbell_lfd <- AddMetaData(object = seurat_campbell_lfd,
+                    metadata = replicate_name,
+                    col.name = "replicate_name")
+
+# Investigate the meta data
+head(seurat_campbell_lfd@meta.data)
+
+seurat_campbell_lfd@meta.data[c(1:5, 3001:3005),]
+
+
+## save object:
+# saveRDS(seurat_campbell_lfd, file = "./seurat_campbell_lfd_just_created.rds")
+
+
+
+```
+
+
+## Create and save a seurat object containing a single replicate of a mouse on a fasted diet that was subsequenctly refed.
+
+
+
+```{r}
+# Refed: SRR5164442
+
+## Load single R object from zUMIs containing the single expression matrix
+file_to_process<- "SRR5164442"
+
+campbell_zUMIs_object<- readRDS(paste0("/media/data/mattb/projects/Brian_scRNAseq_website/data/campbell/", file_to_process, "/zUMIs_output/expression/", file_to_process, "_default_STAR.dgecounts.rds"))
+  
+  ## extract counts from object
+  campbell_refed_expression_matrix<-  as.data.frame(as.matrix(campbell_zUMIs_object$umicount$exon$all)) 
+  
+dim(campbell_refed_expression_matrix)
+#  28295 17928
+
+campbell_refed_expression_matrix[1:6, 1:6]
+
+
+#############
+## Histogram of how many genes are expressed in each cell : 
+at_least_one <- apply(campbell_refed_expression_matrix, 2, function(x) sum(x>0))
+
+summary (at_least_one)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#    1.0   298.0   388.0   517.9   579.0  6018.0  
+    
+head(at_least_one)
+
+par(mfrow=c(1,2)) # One row and two columns
+
+hist(at_least_one, breaks = 100,
+     main = "Distribution of detected genes",
+     xlab = "Genes with at least one tag")
+abline(v= 800, col = "red") 
+
+
+## Histogram of number of counts per cell: 
+colsums_vector<-colSums(campbell_refed_expression_matrix)
+
+summary(colsums_vector)
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#    5.0   373.0   495.0   744.7   778.0 17671.0 
+
+head(colsums_vector)
+
+hist(colsums_vector,
+     breaks = 100, main = "Expression sum per cell",
+     xlab = "Sum expression")
+
+
+############
+## Create a Seurat object to contain scRNA seq data:
+seurat_campbell_refed <- CreateSeuratObject(raw.data = campbell_refed_expression_matrix, 
+                                 min.cells = 3, 
+                                 min.genes = 800, 
+                                 project = "CAMPBELL_REFED")
+
+
+# How many cells and genes passed through initial filtering:
+seurat_campbell_refed
+# from : 17928 cells and 28295 genes
+# to : 2375 cells and 19267 genes
+
+
+
+##############
+## Add mouse replicate info into  metadata
+
+## Investigate the meta data
+head(seurat_campbell_refed@meta.data)
+
+
+## Create vector with mouse replicate name i.e. name of SRR... fastq file 
+replicate_name<- rep(file_to_process, nrow(seurat_campbell_refed@meta.data))
+
+names(replicate_name)<- rownames(seurat_campbell_refed@meta.data)
+
+seurat_campbell_refed <- AddMetaData(object = seurat_campbell_refed,
+                    metadata = replicate_name,
+                    col.name = "replicate_name")
+
+# Investigate the meta data
+head(seurat_campbell_refed@meta.data)
+
+seurat_campbell_refed@meta.data[c(1:5, 2001:2005),]
+
+
+## save object:
+# saveRDS(seurat_campbell_refed, file = "./seurat_campbell_refed_just_created.rds")
+
+
 
 
 
