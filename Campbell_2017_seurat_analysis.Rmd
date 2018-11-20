@@ -23,6 +23,7 @@ library(mclust)
 library(Matrix)
 library(tibble)
 library(PerformanceAnalytics)
+library(edgeR)
 
 ## set working directory
 setwd("/media/data/mattb/projects/Brian_scRNAseq_website/R_projects/mouse_hypothalamus_scRNAseq")
@@ -533,6 +534,582 @@ DoHeatmap(object = seurat_campbell_chow,
 #saveRDS(seurat_campbell_chow, file = "./seurat_campbell_chow_final.rds")
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# EdgeR batch correction of CHOW fed mice
+
+# Analysis of Campbell scRNAseq data for Chow fed mice (5 replicates) using seurat with batch correction
+
+
+### Load CHOW mouse data
+
+```{r readRDS_batch_edgeR_chow}
+
+## Load seurat object
+seurat_campbell_batch_edgeR_chow<- readRDS(file = "./seurat_campbell_chow_just_created.rds")
+
+seurat_campbell_batch_edgeR_chow
+# An object of class seurat in project CAMPBELL_CHOW 
+#  30000 genes across 11255 samples.
+
+```
+
+### Quality control on CHOW mouse data
+
+```{r QC_batch_edgeR_chow}
+
+## Import list of mouse mitocondrially encoded genes:
+mito_genes<- read.csv("mito_genes_table.csv", header = TRUE)
+
+
+## Make list of mitocondrial gene IDS:
+mito_genes <- mito_genes$id_with_url
+
+
+## Identify which mitochondrially expressed gene IDs are present in my dataset:
+mito_genes_present<-seurat_campbell_batch_edgeR_chow@raw.data[mito_genes, ]
+
+mito_genes_present<- mito_genes[!grepl("NA", rownames(mito_genes_present))]
+
+seurat_campbell_batch_edgeR_chow@raw.data[mito_genes_present, 1:5]
+
+dim(seurat_campbell_batch_edgeR_chow@raw.data[mito_genes_present, ])
+
+
+## Calculate the percentage of mitcondrial gene counts per cell
+percent_mito <- Matrix::colSums(seurat_campbell_batch_edgeR_chow@raw.data[mito_genes_present, ])/Matrix::colSums(seurat_campbell_batch_edgeR_chow@raw.data)
+
+
+## Basic stats of proportion of mitocondrial gene expression per cell
+summary(percent_mito)
+
+
+## add percentage mitocondrial genes into metadata
+seurat_campbell_batch_edgeR_chow <- AddMetaData(object = seurat_campbell_batch_edgeR_chow,
+                    metadata = percent_mito,
+                    col.name = "percent_mito")
+
+
+## Look at the seurat object meta data
+head(seurat_campbell_batch_edgeR_chow@meta.data)
+
+
+## QC plots of number of genes, UMIs, and % mitochondria
+VlnPlot(object = seurat_campbell_batch_edgeR_chow,
+        features.plot = c("nGene", "nUMI", "percent_mito"),
+        nCol = 3,
+        x.lab.rot = TRUE,
+        point.size.use = 0.2
+        )
+
+
+## QC plots to show the relationship between nUMIs and relative mitocondrial gene expression or number of genes.
+par(mfrow = c(1, 2))
+# GenePlot(object = seurat_campbell_batch_edgeR_chow, gene1 = "nUMI", gene2 = "percent_mito", do.hover = TRUE, pch.use = 1)
+# GenePlot(object = seurat_campbell_batch_edgeR_chow, gene1 = "nUMI", gene2 = "nGene", do.hover = TRUE, pch.use = 1)
+GenePlot(object = seurat_campbell_batch_edgeR_chow, gene1 = "nUMI", gene2 = "percent_mito", pch.use = 16, cex.use = 0.5)
+
+GenePlot(object = seurat_campbell_batch_edgeR_chow, gene1 = "nUMI", gene2 = "nGene", pch.use = 16, cex.use = 0.5)
+
+
+```
+
+### Filter cells after QC
+
+Filter cells out with more than 0.4% of total gene expression comming from mitocondrially encoded genes and more than 6000 genes expressed. 
+
+```{r FilterCells_batch_edgeR_chow}
+
+## manual check; I already know all cells have >800 genes
+table(seurat_campbell_batch_edgeR_chow@meta.data$percent_mito < 0.004 & seurat_campbell_batch_edgeR_chow@meta.data$nGene<6000)
+ 
+#  From: 30000 genes across 11255 samples.
+# To:
+# FALSE  TRUE 
+#  358 10897 
+ 
+## Filter cells with <0.4% percent_mito and <6000 genes
+seurat_campbell_batch_edgeR_chow <- FilterCells(object = seurat_campbell_batch_edgeR_chow,
+                    subset.names = c("nGene", "percent_mito"),
+                    low.thresholds = c(800, -Inf),
+                    high.thresholds = c(6000, 0.004))
+ 
+seurat_campbell_batch_edgeR_chow
+# An object of class seurat in project CAMPBELL_CHOW 
+# 30000 genes across 10897 samples.
+# 358 cells are filtered out; numbers consistent with above
+ 
+```
+
+
+### Log normalise gene expression per cell
+
+```{r NormalizeData_batch_edgeR_chow}
+
+## Plot graph of total expression before normalisation
+hist(colSums(seurat_campbell_batch_edgeR_chow@data),
+     breaks = 100,
+     main = "Total expression before normalisation",
+     xlab = "Sum of expression")
+
+## Normalise gene expression per cell
+seurat_campbell_batch_edgeR_chow <- NormalizeData(object = seurat_campbell_batch_edgeR_chow, normalization.method = "LogNormalize", 
+    scale.factor = 1e4)
+
+## Plot graph of total expression after normalisation
+hist(colSums(seurat_campbell_batch_edgeR_chow@data),
+     breaks = 100,
+     main = "Total expression after normalisation",
+     xlab = "Sum of expression")
+
+## Examine data:
+seurat_campbell_batch_edgeR_chow@data[1:10,1:10]
+
+```
+
+### Perform batch correction using edgeR
+
+Paper says removeBatchEffect is an edgeR function but actually it is a limma function!?
+
+```{r edgeR_batch_correct_chow}
+# par(mfrow=c(1,2))
+# do_PCA(seurat_campbell_batch_edgeR_chow@data, plot_title="before removeBatchEffect()")
+
+seurat_campbell_batch_edgeR_chow@data = removeBatchEffect(seurat_campbell_batch_edgeR_chow@data,
+                                                          batch = seurat_campbell_batch_edgeR_chow@meta.data$replicate_name)
+seurat_campbell_batch_edgeR_chow@data[1:10,1:10]
+
+# do_PCA(seurat_campbell_batch_edgeR_chow@data, plot_title="after removeBatchEffect()")
+
+```
+
+### Find genes whose expression varies between cells.
+
+Find genes whose expression varies between cells, which will be used to construct principal componets between cells that will be used for clustering.
+
+```{r FindVariableGenes_batch_edgeR_chow}
+
+## Find variable genes by expression
+seurat_campbell_batch_edgeR_chow <- FindVariableGenes(object = seurat_campbell_batch_edgeR_chow,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.75,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+
+
+# number of variable genes
+length(seurat_campbell_batch_edgeR_chow@var.genes)
+
+```
+
+seurat_campbell_batch_edgeR_chow <- FindVariableGenes(object = seurat_campbell_batch_edgeR_chow,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.05,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.75,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+                          
+                          == 1645 variable genes
+
+seurat_campbell_batch_edgeR_chow <- FindVariableGenes(object = seurat_campbell_batch_edgeR_chow,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.02,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.75,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+                          
+                          == 2121 variable genes
+
+seurat_campbell_batch_edgeR_chow <- FindVariableGenes(object = seurat_campbell_batch_edgeR_chow,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.02,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 20,
+                          binning.method = "equal_width"
+                          )
+                          
+                          == 3463 variable genes
+
+seurat_campbell_batch_edgeR_chow <- FindVariableGenes(object = seurat_campbell_batch_edgeR_chow,
+                          mean.function = ExpMean,
+                          dispersion.function = LogVMR,
+                          x.low.cutoff = 0.02,
+                          x.high.cutoff = 4,
+                          y.cutoff = 0.5,
+                          num.bin = 300,
+                          binning.method = "equal_width"
+                          )
+                          
+                          == 2631 variable genes
+
+
+
+## Scale normalised gene expression per cell to remove unwanted sources of variation
+
+Scale gene expression per cell by building linear models for nUMI, percent_mito. Do not scale for mouse replicate as this has already been corrected for using limma?
+
+```{r ScaleData_batch_edgeR_chow}
+
+## Scale data nUMI, percent_mito and mouse replicate
+seurat_campbell_batch_edgeR_chow <- ScaleData(object = seurat_campbell_batch_edgeR_chow, vars.to.regress = c("nUMI", "percent_mito"))
+
+seurat_campbell_batch_edgeR_chow@data[1:10,1:10]
+
+```
+
+
+### Principal component anlysis of variable genes.
+
+Principal component anlysis of variable genes for use in cell clustering.
+
+```{r RunPCA_batch_edgeR_chow}
+
+## Perform principal component analysis on variable genes
+seurat_campbell_batch_edgeR_chow <- RunPCA(object = seurat_campbell_batch_edgeR_chow,
+               pc.genes = seurat_campbell_batch_edgeR_chow@var.genes,
+               do.print = TRUE,
+               pcs.print = 1:5,
+               genes.print = 5)
+
+
+## visualise top genes associated with principal components
+VizPCA(object = seurat_campbell_batch_edgeR_chow, pcs.use = 1:9)
+
+
+## Plot principal component 1 v's 2
+PCAPlot(object = seurat_campbell_batch_edgeR_chow, dim.1 = 1, dim.2 = 2)
+
+
+## Plot principal component 2 v's 3
+PCAPlot(object = seurat_campbell_batch_edgeR_chow, dim.1 = 2, dim.2 = 3)
+
+
+## Plot heat map for gene expression of principal component 1 genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow, pc.use = 1, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+# Ignore warnings!
+
+
+## Plot heat map for gene expression of principal component 2 genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow, pc.use = 2, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+# Ignore warnings!
+
+
+## Plot heat map for gene expression of principal component 3 genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow, pc.use = 3, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+# Ignore warnings!
+
+
+## Plot heat map for gene expression of principal component 4 genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow, pc.use = 4, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+# Ignore warnings!
+
+
+## Plot heat map for gene expression of principal component 5 genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow, pc.use = 5, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+# Ignore warnings!
+
+## Plot multiple heatmaps of gene expression per PC genes
+PCHeatmap(object = seurat_campbell_batch_edgeR_chow,
+          pc.use = 6:20,
+          cells.use = 500,
+          do.balanced = TRUE,
+          label.columns = FALSE)
+
+
+## Takes a pre-computed PCA (from most variable genes identified earlier) and projects this onto the entire dataset (all genes)
+seurat_campbell_batch_edgeR_chow <- ProjectPCA(object = seurat_campbell_batch_edgeR_chow, do.print = TRUE)
+
+```
+
+
+
+### Determine statistically significant principal components
+
+```{r}
+
+## Perform jackstraw statistical test to investigate statistically significant PC.
+seurat_campbell_batch_edgeR_chow <- JackStraw(object = seurat_campbell_batch_edgeR_chow,
+                  num.replicate = 100,
+                  display.progress = TRUE
+                  )
+# Maximum number of PCs allowed = 20.
+
+
+## Visualise JackStraw plots
+JackStrawPlot(object = seurat_campbell_batch_edgeR_chow, PCs = 1:20)
+
+
+## A less computationally intensive heuristic method for finding the statistically significant PCAs is using an elbow plot 
+PCElbowPlot(object = seurat_campbell_batch_edgeR_chow)
+
+
+```
+
+Using the limma batch corrected data 20 PC's are still significant.
+
+### Cell clustering
+
+```{r}
+
+## Cluster cells by PC
+seurat_campbell_batch_edgeR_chow <- FindClusters(object = seurat_campbell_batch_edgeR_chow, reduction.type = "pca", dims.use = 1:20, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell_batch_edgeR_chow)
+
+seurat_campbell_batch_edgeR_chow <- RunTSNE(object = seurat_campbell_batch_edgeR_chow, dims.use = 1:20, do.fast = TRUE)
+
+# TSNEPlot(object = seurat_campbell_batch_edgeR_chow)
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         no.legend = TRUE,
+         do.label = TRUE)
+## 1645 variable genes = 19 clusters
+
+table(seurat_campbell_batch_edgeR_chow@ident)
+
+proportion_table<- table(seurat_campbell_batch_edgeR_chow@ident, seurat_campbell_batch_edgeR_chow@meta.data$replicate_name)
+
+proportion_table<- round(prop.table(proportion_table, 2), 5)
+
+proportion_table
+
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         group.by = "replicate_name",
+         no.legend = FALSE,
+         do.label = FALSE,
+         pt.size = 0.4
+         )
+
+proportion_table<- data.frame(matrix(proportion_table, ncol = 5))
+
+colnames(proportion_table)<- colnames(table(seurat_campbell_batch_edgeR_chow@ident,
+                                            seurat_campbell_batch_edgeR_chow@meta.data$replicate_name))
+
+chart.Correlation(data.frame( proportion_table[1:5,]) )
+
+#######
+seurat_campbell_batch_edgeR_chow <- FindClusters(object = seurat_campbell_batch_edgeR_chow, reduction.type = "pca", dims.use = 1:20, 
+    resolution = 1.0, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell_batch_edgeR_chow)
+
+seurat_campbell_batch_edgeR_chow <- RunTSNE(object = seurat_campbell_batch_edgeR_chow, dims.use = 1:20, do.fast = TRUE)
+
+# TSNEPlot(object = seurat_campbell_batch_edgeR_chow)
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         no.legend = TRUE,
+         do.label = TRUE)
+
+##  1645 variable genes = 20 clusters
+
+
+table(seurat_campbell_batch_edgeR_chow@ident)
+
+proportion_table<- table(seurat_campbell_batch_edgeR_chow@ident, seurat_campbell_batch_edgeR_chow@meta.data$replicate_name)
+
+proportion_table<- round(prop.table(proportion_table, 2), 5)
+
+proportion_table
+
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         group.by = "replicate_name",
+         no.legend = FALSE,
+         do.label = FALSE,
+         pt.size = 0.4
+         )
+
+
+proportion_table<- data.frame(matrix(proportion_table, ncol = 5))
+
+colnames(proportion_table)<- colnames(table(seurat_campbell_batch_edgeR_chow@ident, 
+                                            seurat_campbell_batch_edgeR_chow@meta.data$replicate_name))
+
+chart.Correlation(data.frame( proportion_table[1:5,]) )
+
+
+#######
+seurat_campbell_batch_edgeR_chow <- FindClusters(object = seurat_campbell_batch_edgeR_chow, reduction.type = "pca", dims.use = 1:20, 
+    resolution = 1.5, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell_batch_edgeR_chow)
+
+seurat_campbell_batch_edgeR_chow <- RunTSNE(object = seurat_campbell_batch_edgeR_chow, dims.use = 1:20, do.fast = TRUE)
+
+# TSNEPlot(object = seurat_campbell_batch_edgeR_chow)
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         no.legend = TRUE,
+         do.label = TRUE)
+
+##  1645 variable genes = 24 clusters
+
+
+table(seurat_campbell_batch_edgeR_chow@ident)
+
+proportion_table<- table(seurat_campbell_batch_edgeR_chow@ident, seurat_campbell_batch_edgeR_chow@meta.data$replicate_name)
+
+proportion_table<- round(prop.table(proportion_table, 2), 5)
+
+proportion_table
+
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         group.by = "replicate_name",
+         no.legend = FALSE,
+         do.label = FALSE,
+         pt.size = 0.4
+         )
+
+
+proportion_table<- data.frame(matrix(proportion_table, ncol = 5))
+
+colnames(proportion_table)<- colnames(table(seurat_campbell_batch_edgeR_chow@ident, 
+                                            seurat_campbell_batch_edgeR_chow@meta.data$replicate_name))
+
+chart.Correlation(data.frame( proportion_table[1:5,]) )
+
+#######
+seurat_campbell_batch_edgeR_chow <- FindClusters(object = seurat_campbell_batch_edgeR_chow, reduction.type = "pca", dims.use = 1:20, 
+    resolution = 2.0, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+PrintFindClustersParams(object = seurat_campbell_batch_edgeR_chow)
+
+seurat_campbell_batch_edgeR_chow <- RunTSNE(object = seurat_campbell_batch_edgeR_chow, dims.use = 1:20, do.fast = TRUE)
+
+# TSNEPlot(object = seurat_campbell_batch_edgeR_chow)
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         no.legend = TRUE,
+         do.label = TRUE)
+
+##  1645 variable genes = 29 clusters
+
+
+table(seurat_campbell_batch_edgeR_chow@ident)
+
+proportion_table<- table(seurat_campbell_batch_edgeR_chow@ident, seurat_campbell_batch_edgeR_chow@meta.data$replicate_name)
+
+proportion_table<- round(prop.table(proportion_table, 2), 5)
+
+proportion_table
+
+TSNEPlot(object = seurat_campbell_batch_edgeR_chow,
+         group.by = "replicate_name",
+         no.legend = FALSE,
+         do.label = FALSE,
+         pt.size = 0.4 )
+
+# install.packages("PerformanceAnalytics")
+
+proportion_table<- data.frame(matrix(proportion_table, ncol = 5))
+
+colnames(proportion_table)<- colnames(table(seurat_campbell_batch_edgeR_chow@ident, 
+                                            seurat_campbell_batch_edgeR_chow@meta.data$replicate_name))
+
+chart.Correlation(data.frame( proportion_table[1:5,]) )
+
+# cor(proportion_table[1],proportion_table[4])
+
+## Cluster cells using final parameters (1645 genes, 20 PC, resolution = 0.6)
+seurat_campbell_batch_edgeR_chow <- FindClusters(object = seurat_campbell_batch_edgeR_chow, reduction.type = "pca", dims.use = 1:20, 
+    resolution = 0.6, print.output = 0, save.SNN = TRUE, force.recalc = TRUE)
+
+
+## Produce t-SNE
+seurat_campbell_batch_edgeR_chow <- RunTSNE(object = seurat_campbell_batch_edgeR_chow, dims.use = 1:20, do.fast = TRUE)
+
+```
+Use 1645 genes, 20 principal components and a resolution of 0.6 to give 19 individual clusters. Although, there is good correlation between the proportion of cells in each cluster from each experimental batch using a resolution of 0.6, there is still batch effects visible. Therefore, the results of using the limma batch correction feature is similar to using the seurat v2.0 scaledata batch correction (maybe a both use a linear model) so there is no benefit to using the limma feature like the Campbell paper.
+
+
+### Finding differentially expressed genes between cell clusters (cluster biomarkers)
+
+```{r}
+
+
+## Find markers for every cluster compared to all remaining cells, report both positive and negative genes.
+seurat_campbell_batch_edgeR_chow_biomarkers <- FindAllMarkers(object = seurat_campbell_batch_edgeR_chow, only.pos = FALSE, min.pct = 0.2)
+
+
+## Get the top 10 biomarkers per cluster
+top10_seurat_campbell_markers<- seurat_campbell_batch_edgeR_chow_biomarkers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+top10_seurat_campbell_markers
+
+write.csv(as.data.frame(seurat_campbell_batch_edgeR_chow_biomarkers), file = "seurat_campbell_batch_edgeR_chow_biomarkers.csv", quote = FALSE)
+write.csv(as.data.frame(top10_seurat_campbell_markers), file = "top10_seurat_campbell_batch_edgeR_chow_biomarkers.csv", quote = FALSE)
+
+
+
+
+## Perform ROC DE test. This can take a long time.
+seurat_campbell_batch_edgeR_chow_biomarkers_ROC <- FindAllMarkers(object = seurat_campbell_batch_edgeR_chow, only.pos = FALSE, min.pct = 0.2, test.use = "roc")
+
+top10_seurat_campbell_markers_ROC<- seurat_campbell_batch_edgeR_chow_biomarkers_ROC %>% group_by(cluster) %>% top_n(10, avg_logFC)
+top10_seurat_campbell_markers_ROC
+
+write.csv(as.data.frame(seurat_campbell_batch_edgeR_chow_biomarkers_ROC), file = "seurat_campbell_batch_edgeR_chow_biomarkers_ROC.csv", quote = FALSE)
+write.csv(as.data.frame(top10_seurat_campbell_markers_ROC), file = "top10_seurat_campbell_batch_edgeR_chow_biomarkers_ROC.csv", quote = FALSE)
+
+## Plot heatmap of top 10 DE genes
+DoHeatmap(object = seurat_campbell_batch_edgeR_chow,
+          genes.use = top10_seurat_campbell_markers$gene,
+          slim.col.label = TRUE,
+          remove.key = TRUE)
+
+```
+
+
+
+### Save seurat object of chow mice.
+
+```{r}
+
+## save seurat object as .rds 
+saveRDS(seurat_campbell_batch_edgeR_chow, file = "./seurat_campbell_batch_edgeR_chow_final.rds")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
